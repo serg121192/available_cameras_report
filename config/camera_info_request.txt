@@ -1,0 +1,12 @@
+SELECT
+    department,
+    COUNT(*) AS all_cameras,
+    COUNT(*) FILTER (WHERE type = 2) AS all_plates,
+    COUNT(*) FILTER (WHERE type = 3) AS all_face,
+    COUNT(*) FILTER (WHERE last_online < NOW() - INTERVAL '3 days') AS unavailable,
+    COUNT(*) FILTER (WHERE type = 2 AND last_online < NOW() - INTERVAL '3 days') AS unavailable_plates,
+    COUNT(*) FILTER (WHERE type = 3 AND last_online < NOW() - INTERVAL '3 days') AS unavailable_face
+FROM cameras
+WHERE department = ANY(:departments)
+GROUP BY department
+ORDER BY department;
