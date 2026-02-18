@@ -4,5 +4,5 @@ target-version = ["py314"]
 
 
 [tool.ruff]
-line-length = 79
+line-length = 78
 target-version = "py314"
