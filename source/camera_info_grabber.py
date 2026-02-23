@@ -28,40 +28,64 @@ def create_connection_engine() -> Engine:
 
 
 def camera_info_grabber() -> pd.DataFrame:
-    map_files = CONFIG_DIR.glob("*_map.json")
-    engine = create_connection_engine()
+    map_files = list(CONFIG_DIR.glob("*_map.json"))
+    if not map_files:
+        return pd.DataFrame()
 
+    # Read all map files and collect department ids to run a single DB query
+    dep_maps = []
+    all_departments = set()
+    for file in map_files:
+        with open(file, "r", encoding="utf-8") as f:
+            dep_map = json.load(f)
+        dep_maps.append((file, dep_map))
+        for k in dep_map.keys():
+            try:
+                all_departments.add(int(k))
+            except Exception:
+                continue
+
+    request = text(
+        (CONFIG_DIR / "camera_info_request.txt").read_text(encoding="utf-8")
+    )
+
+    engine = create_connection_engine()
     complete_report = []
 
+    if not all_departments:
+        return pd.DataFrame()
+
     with engine.connect() as connection:
-        for file in map_files:
-            with open(file, "r", encoding="utf-8") as f:
-                dep_map = json.load(f)
+        # Single read for all departments across map files
+        district_info_all = pd.read_sql(
+            request, connection, params={"departments": list(all_departments)}
+        )
 
-            request = text(
-                (CONFIG_DIR / "camera_info_request.txt").read_text(
-                    encoding="utf-8"
-                )
-            )
+        # Split results per map file and apply local mappings
+        for file, dep_map in dep_maps:
+            try:
+                departments_set = {int(k) for k in dep_map.keys()}
+            except Exception:
+                departments_set = set()
 
-            departments_list = dep_map.keys()
+            if not departments_set:
+                continue
 
-            district_info = pd.read_sql(
-                request,
-                connection,
-                params={
-                    "departments": [
-                        int(department) for department in departments_list
-                    ]
-                },
-            )
+            district_info = district_info_all[
+                district_info_all["department"].isin(departments_set)
+            ].copy()
+
+            if district_info.empty:
+                continue
 
             district_info["department"] = (
                 district_info["department"].astype(str).map(dep_map)
             )
-
             district_info["district"] = file.stem.replace("_map", "")
             complete_report.append(district_info)
+
+    if not complete_report:
+        return pd.DataFrame()
 
     complete_report = pd.concat(complete_report, ignore_index=True)
 
